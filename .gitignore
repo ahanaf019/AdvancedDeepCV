@@ -25,4 +25,5 @@ Thumbs.db
 *.swp
 *.swo
 
+*checkpoints*/
 */*checkpoints*/

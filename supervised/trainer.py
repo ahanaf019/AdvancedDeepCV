@@ -13,6 +13,9 @@ import os
 from typing import Callable
 from tqdm import tqdm
 from utils.utils import *
+from typing import List, Callable
+import torchmetrics
+import copy
 
 
 class SupervisedTrainer():
@@ -24,6 +27,7 @@ class SupervisedTrainer():
             optim: torch.optim.Optimizer,
             loss_fn: Callable,
             num_classes: int,
+            metrics: List[torchmetrics.Metric],
             save_filename:str='model.pt',
             device='cuda',
             # amp: bool = True
@@ -34,14 +38,25 @@ class SupervisedTrainer():
         self.optim = optim
         self.loss_fn = loss_fn
         self.num_classes = num_classes
+        self.train_metrics = copy.deepcopy(metrics)
+        self.val_metrics = copy.deepcopy(metrics)
         self.save_filename = save_filename
         self.device = device
         self.scaler = torch.amp.grad_scaler.GradScaler()
+
+        for metric in self.train_metrics:
+            metric.to(self.device)
+        for metric in self.val_metrics:
+            metric.to(self.device)
 
 
     def train_epoch(self):
         losses = []
         self.model.train()
+
+        for metric in self.train_metrics:
+            metric.reset()
+
         with tqdm(self.train_loader, ncols=120) as progress_bar:
             for images, labels in progress_bar:
                 # continue
@@ -61,20 +76,34 @@ class SupervisedTrainer():
 
                 losses.append(loss.item())
 
+                for metric in self.train_metrics:
+                    metric.update(torch.softmax(outputs, dim=1), labels)
+
                 progress_bar.set_postfix(
                     loss=f"{np.mean(losses).item():0.4f}", 
                     mem_use=f'{(torch.cuda.memory_allocated() + torch.cuda.memory_reserved()) / 1024**2:.2f} MB',
                     )
+        
+        out_dict = {}
+        out_dict['loss'] = np.mean(losses).item()
+        for metric in self.train_metrics:
+            out_dict[f'{metric.__class__.__name__.replace("Multiclass", "")}'] = metric.compute().item()
+        return out_dict 
 
-        return np.mean(losses).item()
 
-
-    def validation_epoch(self):
+    def __validation_epoch(self, loader: torch.utils.data.DataLoader=None):
         losses = []
+        ext = ''
+        if loader == None:
+            loader = self.val_loader
+            ext = 'val_'
+
+        for metric in self.val_metrics:
+            metric.reset()
 
         self.model.eval()
         with torch.inference_mode():
-            for images, labels in tqdm(self.val_loader, ncols=65):
+            for images, labels in tqdm(loader, ncols=65):
                 images = images.to(self.device)
                 labels = labels.to(self.device)
                 labels_onehot = torch.nn.functional.one_hot(labels, num_classes=self.num_classes)
@@ -83,9 +112,18 @@ class SupervisedTrainer():
                 outputs = self.model(images)
                 loss = self.loss_fn(outputs, labels_onehot)
 
+                for metric in self.val_metrics:
+                    metric.update(torch.softmax(outputs, dim=1), labels)
                 losses.append(loss.item())
 
-        return np.mean(losses).item()
+        out_dict = {}
+        out_dict[f'{ext}loss'] = np.mean(losses).item()
+        for metric in self.val_metrics:
+            out_dict[f'{ext}{metric.__class__.__name__.replace("Multiclass", "")}'] = metric.compute().item()
+        return out_dict
+    
+    def evaluate(self, loader):
+        return self.__validation_epoch(loader)
 
 
     def save_state(self, epoch, fname, val_loss):
@@ -118,25 +156,33 @@ class SupervisedTrainer():
         no_improve_epoch_count = 0
         for epoch in range(num_epochs):
             print(f'Epoch {epoch:2d}/{num_epochs:2d}:')
-            train_loss = self.train_epoch()
-            val_loss = self.validation_epoch()
-            scheduler.step(val_loss)
+            train_dict = self.train_epoch()
+            val_dict = self.__validation_epoch()
+            scheduler.step(val_dict['val_loss'])
 
-            if len(val_losses) == 0 or val_loss < np.min(val_losses):
+            if len(val_losses) == 0 or val_dict['val_loss'] < np.min(val_losses):
                 # Save model state
-                dirname = f'checkpoints/{self.model.__class__.__name__}'
-                filename = f'{dirname}/{self.save_filename}'
-                os.makedirs(dirname, exist_ok=True)
-                self.save_state(epoch, filename, val_loss)
-                print(f'Best State Saved at {filename} || val_loss: {val_loss:0.4f}')
+                filename = f'{self.save_filename}'
+                self.save_state(epoch, filename, val_dict['val_loss'])
+                print(f'Best State Saved at {filename} || val_loss: {val_dict["val_loss"]:0.4f}')
                 # Reset early stopping counter
                 no_improve_epoch_count = 0
             else:
                 no_improve_epoch_count += 1
 
-            losses.append(train_loss)
-            val_losses.append(val_loss)
-            print(f'loss: {train_loss:0.4f} | val_loss: {val_loss:0.4f} | lr: {scheduler.get_last_lr()[-1]:.4e}')
+            losses.append(train_dict['loss'])
+            val_losses.append(val_dict['val_loss'])
+            
+            train_log_strings = []
+            val_log_strings = []
+            for key in train_dict.keys():
+                train_log_strings.append(f'{key} : {train_dict[key]:0.4f}')
+            for key in val_dict.keys():
+                val_log_strings.append(f'{key} : {val_dict[key]:0.4f}')
+            logs = train_log_strings + val_log_strings
+            
+            msg = ' | '.join(logs)
+            print(f'{msg} | lr: {scheduler.get_last_lr()[-1]:.4e}')
             
             if no_improve_epoch_count > early_stop_patience:
                 print('Early Stopping')
@@ -145,7 +191,7 @@ class SupervisedTrainer():
         if reset_lr_after_training:
             self.__reset_lr(initial_lr)
         
-        return losses, accs, val_losses, val_accs
+        return losses, val_losses
 
     def __reset_lr(self, new_lr):
         for param_group in self.optim.param_groups:

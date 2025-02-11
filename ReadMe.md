@@ -4,7 +4,7 @@ In this repository, I explore various deep learning-based computer vision models
 
 ## Methods Covered (will add progressively)
 
-- **[Supervised Learning](supervised/ReadMe.md)**
+- **[Supervised Learning](supervised/)**
 - **Unsupervised Learning**
 - **Semi-Supervised Learning**
 

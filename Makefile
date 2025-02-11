@@ -1,6 +1,7 @@
 .PHONY: run install clean
 
 run:
+	rm -rf logs/supervised.*
 	python -m supervised.main
 
 
