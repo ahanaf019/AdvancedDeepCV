@@ -10,8 +10,18 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 import numpy as np
 
-def load_state(fname, model: nn.Module, optim: torch.optim.Optimizer=None):
-    obj = torch.load(fname)
+def load_state(path: str, model: nn.Module=None, optim: torch.optim.Optimizer=None)-> tuple[nn.Module, torch.optim.Optimizer]:
+    """Loads the saved weights to the model and optimizer from the saved path. 
+
+    Args:
+        path (str): Full path of the saved state object
+        model (nn.Module, optional): Model object to load to. Defaults to None.
+        optim (torch.optim.Optimizer, optional): Optimizer to load to. Defaults to None.
+
+    Returns:
+        tuple[nn.Module, torch.optim.Optimizer]: The weight-loaded model and optimizer objects
+    """
+    obj = torch.load(path)
     if model is not None:
         model.load_state_dict(obj['model_state'])
         print('Model State Loaded')
@@ -81,7 +91,14 @@ def get_images_labels_list(db_name:str, subset:str, limit=100, seed=322)-> tuple
 
 
 
-def _plot(arr1, arr2, ylabel):
+def _plot(arr1: np.ndarray, arr2: np.ndarray, ylabel: str):
+    """Helper function to plot train and validation curves.
+
+    Args:
+        arr1 (np.ndarray): The training curve
+        arr2 (np.ndarray): The validation curve
+        ylabel (str): The label on the Y-axis
+    """
     plt.plot(arr1, '.-', color='blueviolet')
     plt.plot(arr2, 'x-', color='forestgreen')
     plt.grid('on')

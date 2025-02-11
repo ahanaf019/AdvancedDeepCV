@@ -1,7 +1,7 @@
 .PHONY: run install clean
 
 run:
-	python -m supervised-learning.main
+	python -m supervised.main
 
 
 clean:
