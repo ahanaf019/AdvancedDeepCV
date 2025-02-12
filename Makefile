@@ -2,7 +2,7 @@
 
 run:
 	rm -rf logs/supervised.*
-	python -m supervised.main
+	python -m supervised.main_classification
 
 
 clean:

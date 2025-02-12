@@ -49,17 +49,18 @@ def read_image(path: str, size: tuple[int, int]=(96, 96))-> np.ndarray:
 
 
 
-def get_images_labels_list(db_name:str, subset:str, limit=100, seed=322)-> tuple[List, List]:
+def get_images_labels(db_name:str, subset:str, start_idx_per_class=0, end_idx_per_class=-1, shuffle=True, seed=322)-> tuple[List, List]:
     """Get a list of images and labels. The database should be stored in `~/Datasets/{db_name}`
 
     Args:
         db_name (str): name of the dataset
         subset (str): Which subset (train, test or other)
-        limit (int, optional): The maximum number of elements of each class. Defaults to 100.
+        start_idx_per_class (int, optional): The index of the first element of each class to take. Defaults to 0.
+        end_idx_per_class (int, optional): The index of the last element of each class to take. Defaults to -1.
         seed (int, optional): sets random state when shuffling the array
 
     Returns:
-        tuple[List, List]: _description_
+        tuple[List, List]: The subset of images and labels from the dataset
     """
     np.random.seed(seed)
     db_path = Path(os.environ['HOME']) / 'Datasets' / db_name
@@ -74,19 +75,24 @@ def get_images_labels_list(db_name:str, subset:str, limit=100, seed=322)-> tuple
 
     for _class in classes:
         images = sorted(_class.glob("*"))
-        images = np.random.choice(images, len(images), replace=False)
-        class_wise_dict[_class.stem] = images[:limit]
+        # shuffle the images in each class
+        if shuffle:
+            images = np.random.choice(images, len(images), replace=False)
+        class_wise_dict[_class.stem] = images[start_idx_per_class:end_idx_per_class]
 
     class_name_list = sorted(list(class_wise_dict.keys()))
     
     images_list = []
     for key in class_wise_dict.keys():
         images_list += class_wise_dict[key].tolist()
-    images_list = np.random.choice(images_list, len(images_list), replace=False).tolist()
+    
+    # shuffle all the images
+    if shuffle:
+        images_list = np.random.choice(images_list, len(images_list), replace=False).tolist()
     
     labels = [class_name_list.index(x.parent.stem) for x in images_list]
     print(f'Total Classes: {len(classes)}')
-    print(f'Total Images ({limit} per class): {len(images_list)}')
+    print(f'Total Images ({end_idx_per_class} per class): {len(images_list)}')
     return images_list, labels
 
 

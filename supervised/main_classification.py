@@ -1,5 +1,5 @@
 import torchmetrics.classification
-from utils.utils import get_images_labels_list, read_image
+from utils.utils import get_images_labels, read_image
 from supervised.datasets import ImageClassificationDataset
 from supervised.trainer import SupervisedTrainer
 from supervised.models import CNNModel
@@ -22,16 +22,14 @@ db_name = 'STL10'
 train_subset = 'train'
 test_subset = 'test'
 NUM_CLASSES = 10
-limit_per_class = 200
+VAL_BEGIN_IDX = 200
+VAL_IMAGES_COUNT = 100
 TEST_SIZE = 100 * NUM_CLASSES
 IMAGE_SIZE = 96
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-4
 NUM_EPOCHS = 50
-image_paths, labels = get_images_labels_list(db_name, train_subset, limit=limit_per_class)
-test_paths, test_labels = get_images_labels_list(db_name, test_subset, limit=100000)
-X_train, X_val, y_train, y_val = train_test_split(image_paths, labels, test_size=TEST_SIZE, random_state=SEED)
-print(len(X_train), len(X_val))
+
 
 
 train_data_transforms = transforms.Compose([
@@ -54,6 +52,12 @@ test_data_transforms = transforms.Compose([
 
 for pretrained in [False, True]:
     for train_cap in [100, 50, 10, 5, 1]:
+        X_train, y_train = get_images_labels(db_name, train_subset, start_idx_per_class=0, end_idx_per_class=train_cap)
+        X_val, y_val = get_images_labels(db_name, train_subset, start_idx_per_class=VAL_BEGIN_IDX, end_idx_per_class=VAL_BEGIN_IDX + VAL_IMAGES_COUNT)
+        test_paths, test_labels = get_images_labels(db_name, test_subset, end_idx_per_class=100000)
+        print(len(X_train), len(X_val), len(test_paths))
+
+
         train_db = ImageClassificationDataset(images=X_train[: train_cap * NUM_CLASSES], labels=y_train[: train_cap * NUM_CLASSES], transforms=train_data_transforms)
         val_db = ImageClassificationDataset(images=X_val, labels=y_val, transforms=test_data_transforms)
         test_db = ImageClassificationDataset(images=test_paths, labels=test_labels, transforms=test_data_transforms)
